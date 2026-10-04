@@ -118,6 +118,8 @@ def build_cards(project: dict, assets: list[dict], immich: Immich, cache: MediaC
             if progress and (index % 10 == 0 or index == total):
                 progress(index, total, "Downloading small thumbnails")
     for month in range(1, 13):
+        if progress:
+            progress(month - 1, 12, f"Month {month} of 12 · finding candidates")
         start, end = month_window(birthday, month)
         middle = start + (end - start) / 2
         matches = [asset for asset in assets if asset["id"] in thumbnails and (day := asset_day(asset)) and start <= day < end]
@@ -147,6 +149,8 @@ def build_cards(project: dict, assets: list[dict], immich: Immich, cache: MediaC
                     points = {item["id"]: 0 for item in shortlist}
                     for offset in range(0, len(shortlist), 8):
                         batch = shortlist[offset:offset + 8]
+                        if progress:
+                            progress(month - 1, 12, f"Month {month} of 12 · comparing thumbnails with AI")
                         ranked, _ = vision.rank(month, [(item["id"], thumbnails[item["id"]]) for item in batch], project.get("prompt", ""))
                         for position, asset_id in enumerate(ranked):
                             points[asset_id] = len(ranked) - position
@@ -155,6 +159,8 @@ def build_cards(project: dict, assets: list[dict], immich: Immich, cache: MediaC
                     warnings.append(f"Month {month}: thumbnail AI ranking failed ({exc}).")
             finalists = ranked_items[:4]
             previews = []
+            if progress:
+                progress(month - 1, 12, f"Month {month} of 12 · loading previews")
             for item in finalists:
                 try:
                     previews.append((item["id"], cache.get(immich, item["id"], "preview")))
@@ -162,6 +168,8 @@ def build_cards(project: dict, assets: list[dict], immich: Immich, cache: MediaC
                     warnings.append(f"Month {month}: preview unavailable for {item['id']} ({exc}).")
             if vision and len(previews) > 1:
                 try:
+                    if progress:
+                        progress(month - 1, 12, f"Month {month} of 12 · comparing final photos with AI")
                     final_ids, reason = vision.rank(month, previews, project.get("prompt", ""))
                     ranked_items = sorted(ranked_items, key=lambda item: final_ids.index(item["id"]) if item["id"] in final_ids else 99)
                 except VisionError as exc:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from urllib.parse import urlparse
+from collections.abc import Callable
 
 import httpx
 
@@ -59,7 +60,8 @@ class Immich:
         data = self._json("GET", "albums")
         return data if isinstance(data, list) else data.get("albums", data.get("items", []))
 
-    def search_year(self, start: str, end: str, person_id: str | None, album_ids: list[str] | None) -> list[dict]:
+    def search_year(self, start: str, end: str, person_id: str | None, album_ids: list[str] | None,
+                    progress: Callable[[int, int, str], None] | None = None) -> list[dict]:
         filters: dict = {
             "takenAfter": f"{start}T00:00:00.000Z",
             "takenBefore": f"{end}T23:59:59.999Z",
@@ -70,21 +72,31 @@ class Immich:
         }
         if person_id:
             filters["personIds"] = [person_id]
-        if album_ids:
-            filters["albumIds"] = album_ids
-        assets = []
-        page = 1
-        while True:
-            data = self._json("POST", "search/metadata", json={**filters, "page": page})
-            group = data.get("assets", {})
-            batch = group.get("items", [])
-            assets.extend(batch)
-            if len(assets) > 10000:
-                raise ImmichError("More than 10,000 photos matched. Narrow the person or album selection.")
-            if not group.get("nextPage") or not batch:
-                break
-            page = int(group["nextPage"])
-        return [asset for asset in assets if asset.get("type") == "IMAGE" and not asset.get("isTrashed") and not asset.get("isOffline")]
+        # Immich treats multiple albumIds as an intersection. Query each album to build a union.
+        searches = album_ids or [None]
+        assets: dict[str, dict] = {}
+        for index, album_id in enumerate(searches, 1):
+            page = 1
+            while True:
+                if progress:
+                    progress(index - 1, len(searches), f"Searching album {index} of {len(searches)} · page {page}")
+                request_filters = {**filters, "page": page}
+                if album_id:
+                    request_filters["albumIds"] = [album_id]
+                data = self._json("POST", "search/metadata", json=request_filters)
+                group = data.get("assets", {})
+                batch = group.get("items", [])
+                for asset in batch:
+                    if asset.get("type") == "IMAGE" and not asset.get("isTrashed") and not asset.get("isOffline"):
+                        assets[asset["id"]] = asset
+                if len(assets) > 10000:
+                    raise ImmichError("More than 10,000 photos matched. Narrow the album selection.")
+                if not group.get("nextPage") or not batch:
+                    break
+                page = int(group["nextPage"])
+            if progress:
+                progress(index, len(searches), f"Searched {index} of {len(searches)} albums · {len(assets)} unique photos")
+        return list(assets.values())
 
     def image(self, asset_id: str, size: str) -> bytes:
         if size not in {"thumbnail", "preview", "original"}:

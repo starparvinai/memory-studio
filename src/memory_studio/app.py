@@ -148,8 +148,12 @@ def _build(project_id: str) -> None:
     try:
         project = _project(project_id)
         project["status"], project["error"] = "building", None
-        project["progress"] = {"done": 0, "total": 1, "stage": "Reading album metadata"}
-        store.save_project(project)
+        project["build_started_at"] = datetime.now(timezone.utc).isoformat()
+        def progress(done: int, total: int, stage: str):
+            project["progress"] = {"done": done, "total": total, "stage": stage,
+                                   "updated_at": datetime.now(timezone.utc).isoformat()}
+            store.save_project(project)
+        progress(0, 1, "Connecting to Immich")
         immich = _immich()
         try:
             birthday = datetime.fromisoformat(project["birth_date"]).date()
@@ -158,20 +162,23 @@ def _build(project_id: str) -> None:
             from datetime import timedelta
             album_ids = project.get("album_ids") or [project["album_id"]]
             assets = immich.search_year((birthday - timedelta(days=2)).isoformat(),
-                                        (end + timedelta(days=2)).isoformat(), None, album_ids)
+                                        (end + timedelta(days=2)).isoformat(), None, album_ids, progress)
             assets = list({asset["id"]: asset for asset in assets if (day := asset_day(asset)) and birthday <= day < end}.values())
-            def progress(done: int, total: int, stage: str):
-                project["progress"] = {"done": done, "total": total, "stage": stage}
-                store.save_project(project)
+            project["asset_count"] = len(assets)
+            if not assets:
+                project["cards"] = []
+                project["status"] = "empty"
+                project["error"] = "No photos match the selected albums during the first 12 months after the birth date. Check the birth date and album choices, then refresh from Immich."
+                progress(1, 1, "No matching photos found")
+                return
+            progress(0, len(assets), f"Found {len(assets)} photos · preparing thumbnails")
             cards, warnings = build_cards(project, assets, immich, cache, _vision(), progress)
             project["cards"] = cards
             project["warnings"] = warnings
-            project["asset_count"] = len(assets)
             project["status"] = "ready"
             project["last_sync_at"] = datetime.now(timezone.utc).isoformat()
             project["updated_at"] = project["last_sync_at"]
-            project["progress"] = {"done": 12, "total": 12, "stage": "Ready to review"}
-            store.save_project(project)
+            progress(12, 12, "Ready to review")
         finally:
             immich.close()
     except Exception as exc:
