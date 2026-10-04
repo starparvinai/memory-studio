@@ -217,6 +217,7 @@ def update_card(project_id: str, month: int, update: CardUpdate):
         if update.asset_id not in {candidate["id"] for candidate in card["candidates"]}:
             raise HTTPException(400, "Choose one of the displayed alternatives")
         card["asset_id"] = update.asset_id
+        card["candidates"] = sorted(card["candidates"], key=lambda candidate: candidate["id"] != update.asset_id)
         card["photo_locked"] = True
         card["reason"] = "Chosen by you"
     if update.caption is not None:

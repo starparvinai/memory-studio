@@ -12,9 +12,13 @@ from typing import Callable
 
 from PIL import Image, ImageFilter, ImageOps, ImageStat
 
+from .face_detection import face_widths
 from .immich import Immich
 from .media import MediaCache
 from .vision import Vision, VisionError
+
+
+SELECTION_VERSION = 2
 
 
 def add_months(day: date, months: int) -> date:
@@ -75,28 +79,37 @@ def _image_quality(data: bytes) -> float:
         brightness = ImageStat.Stat(image).mean[0]
         contrast = ImageStat.Stat(image).stddev[0]
         edges = ImageStat.Stat(image.filter(ImageFilter.FIND_EDGES)).stddev[0]
-        return min(contrast, 60) * 0.35 + min(edges, 70) * 0.35 - abs(brightness - 125) * 0.12
+        # Edges from bars, toys, and foliage should not dominate the shortlist.
+        return min(contrast, 60) * 0.35 + min(edges, 70) * 0.08 - abs(brightness - 125) * 0.12
     except Exception:
         return -100
 
 
-def _visual_shortlist(items: list[dict], thumbnails: dict[str, bytes], start: date, middle: date) -> list[dict]:
-    scored = sorted(items, key=lambda item: _score(item, middle) * 0.1 + _image_quality(thumbnails[item["id"]]), reverse=True)
-    selected = scored[:6]
+def _visual_shortlist(items: list[dict], thumbnails: dict[str, bytes], start: date, middle: date,
+                      faces: dict[str, float]) -> list[dict]:
+    def shortlist_score(item: dict) -> float:
+        base = _score(item, middle) * 0.1 + _image_quality(thumbnails[item["id"]])
+        if not faces:
+            return base
+        width = faces.get(item["id"], 0)
+        return min(width * 100, 40) + base * 0.3 - (8 if width == 0 else 0)
+
+    scored = sorted(items, key=shortlist_score, reverse=True)
+    selected = scored[:12]
     # Temporal spread stops a burst of near-identical photos crowding out the month.
     for quarter in range(4):
         group = [item for item in scored if asset_day(item) and min(3, (asset_day(item) - start).days // 8) == quarter]
         if group and group[0] not in selected:
             selected.append(group[0])
     for item in scored:
-        if item.get("isFavorite") and item not in selected and len(selected) < 16:
+        if item.get("isFavorite") and item not in selected and len(selected) < 24:
             selected.append(item)
     for item in scored:
-        if len(selected) >= 16:
+        if len(selected) >= 24:
             break
         if item not in selected:
             selected.append(item)
-    return selected[:16]
+    return selected[:24]
 
 
 def build_cards(project: dict, assets: list[dict], immich: Immich, cache: MediaCache,
@@ -117,6 +130,11 @@ def build_cards(project: dict, assets: list[dict], immich: Immich, cache: MediaC
                 warnings.append(f"Could not read thumbnail for {asset_id}: {exc}")
             if progress and (index % 10 == 0 or index == total):
                 progress(index, total, "Downloading small thumbnails")
+    faces: dict[str, float] = {}
+    if vision and thumbnails:
+        if progress:
+            progress(0, total, "Checking face prominence in cached thumbnails")
+        faces = face_widths({asset_id: cache.root / "thumbnail" / asset_id for asset_id in thumbnails}, cache.root.parent)
     for month in range(1, 13):
         if progress:
             progress(month - 1, 12, f"Month {month} of 12 · finding candidates")
@@ -131,12 +149,12 @@ def build_cards(project: dict, assets: list[dict], immich: Immich, cache: MediaC
                 seen.add(key)
                 unique.append(asset)
         digest = hashlib.sha256(json.dumps(
-            [(item["id"], item.get("checksum"), item.get("updatedAt")) for item in unique],
+            [SELECTION_VERSION, [(item["id"], item.get("checksum"), item.get("updatedAt")) for item in unique]],
             sort_keys=True,
         ).encode()).hexdigest()
         old = previous.get(month, {})
-        shortlist = _visual_shortlist(unique, thumbnails, start, middle) if unique else []
-        shortlist = shortlist[:16 if project.get("analysis_depth") == "thorough" else 8]
+        shortlist = _visual_shortlist(unique, thumbnails, start, middle, faces) if unique else []
+        shortlist = shortlist[:24 if project.get("analysis_depth") == "thorough" else 16]
         selected = old.get("asset_id") if old.get("photo_locked") else None
         reason = old.get("reason", "") if selected else ""
         if not selected and old.get("source_digest") == digest and old.get("asset_id"):
@@ -144,20 +162,19 @@ def build_cards(project: dict, assets: list[dict], immich: Immich, cache: MediaC
             reason = old.get("reason", "")
         ranked_items = shortlist[:]
         if not selected and shortlist:
+            finalists = shortlist[:6]
             if vision:
                 try:
-                    points = {item["id"]: 0 for item in shortlist}
+                    batch_winners = []
                     for offset in range(0, len(shortlist), 8):
                         batch = shortlist[offset:offset + 8]
                         if progress:
                             progress(month - 1, 12, f"Month {month} of 12 · comparing thumbnails with AI")
-                        ranked, _ = vision.rank(month, [(item["id"], thumbnails[item["id"]]) for item in batch], project.get("prompt", ""))
-                        for position, asset_id in enumerate(ranked):
-                            points[asset_id] = len(ranked) - position
-                    ranked_items.sort(key=lambda item: (points[item["id"]], _score(item, middle)), reverse=True)
+                        ranked, _ = vision.rank(month, [(item["id"], thumbnails[item["id"]]) for item in batch])
+                        batch_winners.extend(ranked[:2])
+                    finalists = [next(item for item in shortlist if item["id"] == asset_id) for asset_id in batch_winners]
                 except VisionError as exc:
                     warnings.append(f"Month {month}: thumbnail AI ranking failed ({exc}).")
-            finalists = ranked_items[:4]
             previews = []
             if progress:
                 progress(month - 1, 12, f"Month {month} of 12 · loading previews")
@@ -166,22 +183,49 @@ def build_cards(project: dict, assets: list[dict], immich: Immich, cache: MediaC
                     previews.append((item["id"], cache.get(immich, item["id"], "preview")))
                 except Exception as exc:
                     warnings.append(f"Month {month}: preview unavailable for {item['id']} ({exc}).")
-            if vision and len(previews) > 1:
-                try:
-                    if progress:
-                        progress(month - 1, 12, f"Month {month} of 12 · comparing final photos with AI")
-                    final_ids, reason = vision.rank(month, previews, project.get("prompt", ""))
-                    ranked_items = sorted(ranked_items, key=lambda item: final_ids.index(item["id"]) if item["id"] in final_ids else 99)
-                except VisionError as exc:
-                    warnings.append(f"Month {month}: preview AI ranking failed ({exc}).")
+            if vision and previews:
+                final_ids = [asset_id for asset_id, _ in previews]
+                if len(previews) > 1:
+                    try:
+                        if progress:
+                            progress(month - 1, 12, f"Month {month} of 12 · comparing final photos with AI")
+                        final_ids, _ = vision.rank(month, previews)
+                    except VisionError as exc:
+                        warnings.append(f"Month {month}: preview AI ranking failed ({exc}).")
+                assessments: dict[str, dict[str, bool]] = {}
+                for index, (asset_id, data) in enumerate(previews, 1):
+                    try:
+                        if progress:
+                            progress(month - 1, 12, f"Month {month} of 12 · checking face visibility {index}/{len(previews)}")
+                        assessments[asset_id] = vision.assess(data)
+                        if faces and faces.get(asset_id, 0) < 0.18:
+                            assessments[asset_id]["face_large_enough"] = False
+                    except VisionError as exc:
+                        warnings.append(f"Month {month}: face visibility check failed ({exc}).")
+                def finalist_score(asset_id: str) -> tuple[int, int, int, float, int]:
+                    flags = assessments.get(asset_id, {})
+                    unobstructed = not flags.get("foreground_barrier") and not flags.get("face_covered")
+                    return (int(unobstructed), int(flags.get("face_visible", False)),
+                            int(flags.get("face_large_enough", False)), faces.get(asset_id, 0), -final_ids.index(asset_id))
+                best_ids = sorted(final_ids, key=finalist_score, reverse=True)
+                ranked_items = ([next(item for item in shortlist if item["id"] == asset_id) for asset_id in best_ids]
+                                + [item for item in shortlist if item["id"] not in best_ids])
+                best = assessments.get(best_ids[0], {})
+                if best.get("foreground_barrier") or best.get("face_covered"):
+                    reason = "Best available finalist, but a foreground object may obscure the portrait. Please review."
+                    warnings.append(f"Month {month}: all finalists may need a closer look for obstructions.")
+                elif best.get("face_visible") and best.get("face_large_enough"):
+                    reason = "Clear, prominent face without a foreground obstruction."
+                else:
+                    reason = "Best available finalist; check the face and framing before printing."
             selected = ranked_items[0]["id"]
             reason = reason or "Chosen from capture date, image quality, and preview comparison."
         if old.get("photo_locked") and selected and selected not in {a["id"] for a in unique}:
             warnings.append(f"Month {month}: your chosen photo is no longer in the current Immich search results.")
-        if selected and selected not in {item["id"] for item in ranked_items}:
+        if selected:
             chosen = next((item for item in unique if item["id"] == selected), None)
             if chosen:
-                ranked_items = [chosen, *ranked_items[:3]]
+                ranked_items = [chosen, *[item for item in ranked_items if item["id"] != selected]]
         cards.append({
             "month": month,
             "label": f"Month {month}",
@@ -195,7 +239,7 @@ def build_cards(project: dict, assets: list[dict], immich: Immich, cache: MediaC
             "reason": reason,
             "source_digest": digest,
             "candidate_count": len(unique),
-            "candidates": [_candidate_data(item) for item in ranked_items[:4]],
+            "candidates": [_candidate_data(item) for item in ranked_items[:12]],
         })
         if progress:
             progress(month, 12, "Comparing monthly finalists")

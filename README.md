@@ -1,14 +1,14 @@
 # Memory Studio
 
-A private, self-hosted draft maker for family photo print sheets. Its first format is a baby's first 12 months: one selected photo per month, four cuttable cards on each A4 PDF page.
+A private, self-hosted draft maker for family photo print sheets. Its first format is a baby's first 12 months: one selected photo per month, up to four frameless photos on each A4 PDF page.
 
 ## What it does
 
-1. Reads photo metadata from one Immich album and assigns photos to month windows from the birth date.
-2. Downloads and caches small thumbnails. A local image quality pass screens every photo; a vision model compares a limited, date-diverse shortlist per month. Balanced mode compares up to eight per month; Thorough compares up to 16 and takes longer.
-3. Downloads previews for four finalists per month and compares those again.
-4. Shows the draft with alternate photos, editable captions, and crop position controls.
-5. Downloads the 12 selected originals only when you export the print PDF.
+1. Reads photo metadata from selected Immich albums and assigns photos to month windows from the birth date.
+2. Downloads and caches small thumbnails. Image quality and, on macOS, local face-size detection screen every photo; a vision model compares a date-diverse shortlist. Other systems use the image-quality fallback. Balanced mode compares up to 16 per month; Thorough compares up to 24 and takes longer.
+3. Downloads previews for finalists, compares them, then checks each finalist separately for a visible face, foreground barriers, face-covering objects, and face size.
+4. Shows up to 12 alternatives per month with crop position controls. Manual choices stay locked when you refresh the project.
+5. Downloads selected originals only when you export the print PDF. The PDF places the month label at the bottom right of each photo and omits months without a selected photo.
 
 The preview and thumbnail API is `GET /api/assets/{id}/thumbnail?size=...`; the print source is `GET /api/assets/{id}/original`. The app stores API keys, drafts, and cached images in `data/` by default. That directory is ignored by Git.
 
@@ -38,7 +38,7 @@ The first format is the 12-month A4 sheet. It accepts JPEG, PNG, HEIC/HEIF, and 
 
 iPhone Live Photos are supported as print sources: Immich exposes the still as an image asset and links its motion clip through `livePhotoVideoId`. The app selects and prints the full-resolution still, keeps the motion asset ID in each candidate, and does not download the clip for a PDF. Motion clips can be used by a future video format.
 
-Month 1 runs from the birth date through the day before the first monthly anniversary. A photo outside the chosen album or without a usable capture date will not be placed in a slot. You can replace a suggestion with one of four displayed finalists. The vision model sees only reduced images; originals stay between Immich and this app.
+Month 1 runs from the birth date through the day before the first monthly anniversary. A photo outside the chosen albums or without a usable capture date will not be placed in a slot. You can replace a suggestion with one of up to 12 displayed alternatives. The vision model sees only reduced images; originals stay between Immich and this app. The ranking follows fixed portrait criteria; there is no free-text preference field in this version.
 
 The app is a single-user personal server. Keep the repository free of real family photos and credentials. `data/` is private local state; back it up separately if needed.
 

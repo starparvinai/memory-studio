@@ -8,8 +8,10 @@ test('testing Immich saves entered connection before loading albums', async () =
   const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
   assert.ok(script);
   const nodes = new Map();
+  const listeners = new Map();
+  let scrolls = 0;
   const element = (id) => {
-    if (!nodes.has(id)) nodes.set(id, { value: '', hidden: true, innerHTML: '', style: {}, scrollIntoView() {} });
+    if (!nodes.has(id)) nodes.set(id, { value: '', hidden: true, innerHTML: '', style: {}, scrollIntoView() { scrolls++; } });
     return nodes.get(id);
   };
   const calls = [];
@@ -29,10 +31,11 @@ test('testing Immich saves entered connection before loading albums', async () =
     if (path === '/api/projects') return response(200, []);
     if (path === '/api/albums') return saved ? response(200, [{ id: 'album-1', albumName: 'Family', assetCount: 20 }, { id: 'album-2', albumName: 'Holiday', assetCount: 15 }]) : response(502, { detail: 'Set your Immich URL and API key in Settings.' });
     if (path === '/api/projects/project-1') return response(200, { id: 'project-1', title: 'First year', status: 'ready', birth_date: '2025-01-01', cards: [], warnings: [] });
+    if (path === '/api/projects/project-1/cards/1' && options.method === 'PATCH') return response(200, { reason: 'Chosen by you' });
     throw Error(`Unexpected request: ${path}`);
   };
   vm.runInNewContext(script, {
-    document: { getElementById: element, addEventListener() {}, querySelectorAll: () => checked.map(value => ({ value })) },
+    document: { getElementById: element, addEventListener(name, handler) { listeners.set(name, handler); }, querySelectorAll: () => checked.map(value => ({ value })) },
     fetch, location: { hash: '' }, setTimeout() {}, clearTimeout() {}, history: { replaceState() {} },
   });
   await new Promise((resolve) => setImmediate(resolve));
@@ -48,4 +51,14 @@ test('testing Immich saves entered connection before loading albums', async () =
   element('birth-date').value = '2025-01-01';
   await element('create-form').onsubmit({ preventDefault() {}, submitter: { disabled: false } });
   assert.deepEqual(postBody.album_ids, checked);
+  const beforeScrolls = scrolls;
+  const option = { dataset: { choose: '1:photo-2' }, classList: { toggle() {} }, setAttribute() {} };
+  const article = { querySelectorAll: () => [option] };
+  const choice = { dataset: { choose: '1:photo-2' }, closest: () => article };
+  const beforeCalls = calls.length;
+  await listeners.get('click')({ target: { closest: selector => selector === '[data-choose]' ? choice : null } });
+  assert.deepEqual(calls.slice(beforeCalls), ['PATCH /api/projects/project-1/cards/1']);
+  assert.equal(scrolls, beforeScrolls);
+  assert.equal(element('selected-1').src, '/api/projects/project-1/images/photo-2/preview');
+  assert.equal(element('reason-1').textContent, 'Chosen by you');
 });
