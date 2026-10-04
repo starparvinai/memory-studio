@@ -22,7 +22,11 @@ uv sync
 uv run memory-studio
 ```
 
-Open <http://127.0.0.1:8765>. In Settings, enter your Immich URL (for example `https://photos.example.com`) and an API key that can read albums, search assets, view assets, and download originals. Choose Ollama for local image analysis, OpenRouter with your own key, or no AI for an image quality baseline. Load albums, choose one, and create a project.
+Open <http://127.0.0.1:8765>. In Settings, enter your Immich URL (for example `https://photos.example.com`) and an API key with exactly these permissions: `album.read`, `asset.read`, `asset.view`, and `asset.download`. The first version makes no write requests to Immich. Choose Ollama for local image analysis, OpenRouter with your own key, or no AI for an image quality baseline. Load albums, choose one, and create a project.
+
+You can configure the same connection in the local `.env` file instead of the Settings screen. Copy `.env.example` to `.env`, uncomment `IMMICH_URL` and `IMMICH_API_KEY`, and replace their example values. The app reads `.env` when it needs settings, so edits take effect on the next request. A real process environment variable takes precedence over `.env`, which takes precedence over `data/settings.json`. Values entered in the Settings screen are saved to `data/settings.json`; a value already present in `.env` will take precedence over it. Set `MEMORY_STUDIO_ENV_FILE` to use a different dotenv path.
+
+`.env` and `data/settings.json` are both plain text. Both are ignored by Git; this checkout's `.env` has macOS permission `0600`. The public `.env.example` contains placeholders only.
 
 The default server binds only to `127.0.0.1`. If you set `MEMORY_STUDIO_HOST=0.0.0.0` to reach it from another device, put it behind your own authenticated reverse proxy. The app itself has no login yet.
 

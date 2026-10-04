@@ -8,6 +8,8 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from dotenv import dotenv_values
+
 
 class Store:
     def __init__(self, root: Path | None = None):
@@ -31,14 +33,24 @@ class Store:
     def settings(self) -> dict[str, str]:
         with self.lock:
             saved = self._read(self.root / "settings.json", {})
+        env_file = Path(os.environ.get("MEMORY_STUDIO_ENV_FILE", ".env"))
+        file_values = dotenv_values(env_file) if env_file.is_file() else {}
+
+        def get(name: str, key: str, default: str = "") -> str:
+            if name in os.environ:
+                return os.environ[name]
+            if name in file_values and file_values[name] is not None:
+                return str(file_values[name])
+            return saved.get(key, default)
+
         return {
-            "immich_url": os.environ.get("IMMICH_URL", saved.get("immich_url", "")),
-            "immich_api_key": os.environ.get("IMMICH_API_KEY", saved.get("immich_api_key", "")),
-            "openrouter_api_key": os.environ.get("OPENROUTER_API_KEY", saved.get("openrouter_api_key", "")),
-            "openrouter_model": os.environ.get("OPENROUTER_MODEL", saved.get("openrouter_model", "google/gemini-3.1-flash-lite")),
-            "vision_provider": os.environ.get("VISION_PROVIDER", saved.get("vision_provider", "ollama")),
-            "ollama_url": os.environ.get("OLLAMA_URL", saved.get("ollama_url", "http://127.0.0.1:11434")),
-            "ollama_model": os.environ.get("OLLAMA_MODEL", saved.get("ollama_model", "qwen3-vl:4b-instruct")),
+            "immich_url": get("IMMICH_URL", "immich_url"),
+            "immich_api_key": get("IMMICH_API_KEY", "immich_api_key"),
+            "openrouter_api_key": get("OPENROUTER_API_KEY", "openrouter_api_key"),
+            "openrouter_model": get("OPENROUTER_MODEL", "openrouter_model", "google/gemini-3.1-flash-lite"),
+            "vision_provider": get("VISION_PROVIDER", "vision_provider", "ollama"),
+            "ollama_url": get("OLLAMA_URL", "ollama_url", "http://127.0.0.1:11434"),
+            "ollama_model": get("OLLAMA_MODEL", "ollama_model", "qwen3-vl:4b-instruct"),
         }
 
     def save_settings(self, changes: dict[str, str]) -> None:
