@@ -194,15 +194,15 @@ def build_cards(project: dict, assets: list[dict], immich: Immich, cache: MediaC
     return cards, warnings
 
 
-def new_project(title: str, baby_name: str, birth_date: str, person_id: str | None, album_id: str | None, prompt: str, theme: str,
+def new_project(title: str, baby_name: str, birth_date: str, person_id: str | None, album_ids: list[str], prompt: str, theme: str,
                 analysis_depth: str = "balanced") -> dict:
     from uuid import uuid4
 
     birthday = date.fromisoformat(birth_date)
     if birthday > date.today():
         raise ValueError("Birth date cannot be in the future")
-    if not person_id and not album_id:
-        raise ValueError("Choose an Immich person or album to keep the selection focused")
+    if not person_id and not album_ids:
+        raise ValueError("Choose at least one Immich album")
     if analysis_depth not in {"balanced", "thorough"}:
         raise ValueError("Invalid analysis depth")
     now = datetime.now(timezone.utc).isoformat()
@@ -212,7 +212,7 @@ def new_project(title: str, baby_name: str, birth_date: str, person_id: str | No
         "baby_name": baby_name.strip()[:80],
         "birth_date": birth_date,
         "person_id": person_id or None,
-        "album_id": album_id or None,
+        "album_ids": album_ids,
         "prompt": prompt.strip()[:1000],
         "theme": theme,
         "analysis_depth": analysis_depth,

@@ -43,7 +43,8 @@ class ProjectCreate(BaseModel):
     title: str = ""
     baby_name: str = ""
     birth_date: str
-    album_id: str
+    album_ids: list[str] = Field(default_factory=list)
+    album_id: str | None = None
     prompt: str = ""
     theme: str = "peach"
     analysis_depth: str = "balanced"
@@ -123,9 +124,13 @@ def create_project(request: ProjectCreate):
     try:
         if request.theme not in THEMES:
             raise ValueError("Unknown theme")
-        UUID(request.album_id)
+        album_ids = list(dict.fromkeys([*request.album_ids, *([request.album_id] if request.album_id else [])]))
+        if not album_ids:
+            raise ValueError("Choose at least one Immich album")
+        for album_id in album_ids:
+            UUID(album_id)
         project = new_project(request.title, request.baby_name, request.birth_date, None,
-                              request.album_id, request.prompt, request.theme, request.analysis_depth)
+                              album_ids, request.prompt, request.theme, request.analysis_depth)
         project["status"] = "new"
         store.save_project(project)
         _start_build(project["id"])
@@ -151,9 +156,10 @@ def _build(project_id: str) -> None:
             end = add_months(birthday, 12)
             # Search a wider UTC boundary, then assign months using each asset's local capture date.
             from datetime import timedelta
+            album_ids = project.get("album_ids") or [project["album_id"]]
             assets = immich.search_year((birthday - timedelta(days=2)).isoformat(),
-                                        (end + timedelta(days=2)).isoformat(), None, project["album_id"])
-            assets = [asset for asset in assets if (day := asset_day(asset)) and birthday <= day < end]
+                                        (end + timedelta(days=2)).isoformat(), None, album_ids)
+            assets = list({asset["id"]: asset for asset in assets if (day := asset_day(asset)) and birthday <= day < end}.values())
             def progress(done: int, total: int, stage: str):
                 project["progress"] = {"done": done, "total": total, "stage": stage}
                 store.save_project(project)

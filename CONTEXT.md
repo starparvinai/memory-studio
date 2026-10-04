@@ -8,8 +8,8 @@ Memory Studio turns photos from an Immich album into a reviewable personal print
 A one-time request to make a specific print output from a source album, with its own draft and chosen photos.
 _Avoid_: Ongoing feed
 
-**Source album**:
-The Immich album chosen as the photo pool for one project.
+**Source albums**:
+The Immich albums chosen as the combined photo pool for one project. A photo in multiple albums is considered once.
 _Avoid_: Library, collection
 
 **Month window**:

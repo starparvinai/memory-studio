@@ -59,7 +59,7 @@ class Immich:
         data = self._json("GET", "albums")
         return data if isinstance(data, list) else data.get("albums", data.get("items", []))
 
-    def search_year(self, start: str, end: str, person_id: str | None, album_id: str | None) -> list[dict]:
+    def search_year(self, start: str, end: str, person_id: str | None, album_ids: list[str] | None) -> list[dict]:
         filters: dict = {
             "takenAfter": f"{start}T00:00:00.000Z",
             "takenBefore": f"{end}T23:59:59.999Z",
@@ -70,8 +70,8 @@ class Immich:
         }
         if person_id:
             filters["personIds"] = [person_id]
-        if album_id:
-            filters["albumIds"] = [album_id]
+        if album_ids:
+            filters["albumIds"] = album_ids
         assets = []
         page = 1
         while True:

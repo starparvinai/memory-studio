@@ -39,7 +39,7 @@ def test_thumbnails_then_previews_then_selected_originals(tmp_path: Path):
             assets.append({"id": str(uuid4()), "type": "IMAGE", "localDateTime": start.replace(day=min(start.day + offset, 28)).isoformat(),
                            "livePhotoVideoId": str(uuid4()) if month == 0 else None,
                            "exifInfo": {"exifImageWidth": 2400, "exifImageHeight": 2400}})
-    project = new_project("First year", "", birthday.isoformat(), None, str(uuid4()), "warm moments", "peach")
+    project = new_project("First year", "", birthday.isoformat(), None, [str(uuid4())], "warm moments", "peach")
     cards, warnings = build_cards(project, assets, immich, cache, None)
     assert not warnings
     assert len(cards) == 12
@@ -62,7 +62,7 @@ def test_live_photo_heic_still_prints_without_motion_download(tmp_path: Path):
     Image.new("RGB", (1800, 1800), "#dceabb").save(output, format="HEIF")
     immich = FakeImmich(output.getvalue())
     cache = MediaCache(tmp_path)
-    project = new_project("Live Photo", "", "2025-01-01", None, str(uuid4()), "", "sage")
+    project = new_project("Live Photo", "", "2025-01-01", None, [str(uuid4())], "", "sage")
     project["cards"] = [{"month": month, "label": f"Month {month}", "asset_id": str(uuid4()),
                          "live_photo_video_id": str(uuid4()), "crop_x": 0.5, "crop_y": 0.5, "caption": ""}
                         for month in range(1, 13)]
@@ -79,10 +79,14 @@ def test_server_creates_reviews_and_exports_a_draft(tmp_path: Path, monkeypatch)
     Image.new("RGB", (1200, 1200), "#dceabb").save(output, format="JPEG")
     immich = FakeImmich(output.getvalue())
     birthday = date(2025, 1, 1)
-    album_id = str(uuid4())
+    album_ids = [str(uuid4()), str(uuid4())]
     assets = [{"id": str(uuid4()), "type": "IMAGE", "localDateTime": add_months(birthday, month).isoformat(),
                "width": 1200, "height": 1200} for month in range(12)]
-    immich.search_year = lambda *args: assets
+    search_calls = []
+    def search_year(*args):
+        search_calls.append(args)
+        return [*assets, assets[0]]
+    immich.search_year = search_year
     immich.close = lambda: None
     monkeypatch.setattr(webapp, "store", Store(tmp_path))
     monkeypatch.setattr(webapp, "cache", MediaCache(tmp_path))
@@ -90,8 +94,10 @@ def test_server_creates_reviews_and_exports_a_draft(tmp_path: Path, monkeypatch)
     monkeypatch.setattr(webapp, "_vision", lambda: None)
     client = TestClient(webapp.app)
 
-    created = client.post("/api/projects", json={"birth_date": birthday.isoformat(), "album_id": album_id, "theme": "sage"})
+    assert client.post("/api/projects", json={"birth_date": birthday.isoformat(), "album_ids": [], "theme": "sage"}).status_code == 400
+    created = client.post("/api/projects", json={"birth_date": birthday.isoformat(), "album_ids": album_ids, "theme": "sage"})
     assert created.status_code == 200
+    assert created.json()["album_ids"] == album_ids
     project_id = created.json()["id"]
     deadline = monotonic() + 5
     while monotonic() < deadline:
@@ -100,6 +106,8 @@ def test_server_creates_reviews_and_exports_a_draft(tmp_path: Path, monkeypatch)
             break
         sleep(0.05)
     assert project["status"] == "ready", project.get("error")
+    assert search_calls[0][3] == album_ids
+    assert project["asset_count"] == 12
     first = project["cards"][0]
     assert client.patch(f"/api/projects/{project_id}/cards/1", json={"caption": "First smiles", "crop_x": 0.7}).status_code == 200
     assert client.get(f"/api/projects/{project_id}/images/{first['asset_id']}/preview").status_code == 200

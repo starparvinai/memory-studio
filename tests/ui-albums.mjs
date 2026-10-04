@@ -14,6 +14,8 @@ test('testing Immich saves entered connection before loading albums', async () =
   };
   const calls = [];
   let saved = false;
+  let postBody;
+  let checked = [];
   const response = (status, body) => ({ ok: status < 400, json: async () => body });
   const fetch = async (path, options = {}) => {
     calls.push(`${options.method ?? 'GET'} ${path}`);
@@ -23,12 +25,14 @@ test('testing Immich saves entered connection before loading albums', async () =
       return response(200, {});
     }
     if (path === '/api/settings') return response(200, { immich_url: '', vision_provider: 'ollama', ollama_url: '', ollama_model: '', openrouter_model: '' });
+    if (path === '/api/projects' && options.method === 'POST') { postBody = JSON.parse(options.body); return response(200, { id: 'project-1' }); }
     if (path === '/api/projects') return response(200, []);
-    if (path === '/api/albums') return saved ? response(200, [{ id: 'album-1', albumName: 'Family', assetCount: 20 }]) : response(502, { detail: 'Set your Immich URL and API key in Settings.' });
+    if (path === '/api/albums') return saved ? response(200, [{ id: 'album-1', albumName: 'Family', assetCount: 20 }, { id: 'album-2', albumName: 'Holiday', assetCount: 15 }]) : response(502, { detail: 'Set your Immich URL and API key in Settings.' });
+    if (path === '/api/projects/project-1') return response(200, { id: 'project-1', title: 'First year', status: 'ready', birth_date: '2025-01-01', cards: [], warnings: [] });
     throw Error(`Unexpected request: ${path}`);
   };
   vm.runInNewContext(script, {
-    document: { getElementById: element, addEventListener() {} },
+    document: { getElementById: element, addEventListener() {}, querySelectorAll: () => checked.map(value => ({ value })) },
     fetch, location: { hash: '' }, setTimeout() {}, clearTimeout() {}, history: { replaceState() {} },
   });
   await new Promise((resolve) => setImmediate(resolve));
@@ -37,5 +41,11 @@ test('testing Immich saves entered connection before loading albums', async () =
   await element('load-albums').onclick();
   assert.equal(saved, true);
   assert.deepEqual(calls.slice(-2), ['PUT /api/settings', 'GET /api/albums']);
-  assert.match(element('album').innerHTML, /Family/);
+  assert.match(element('albums').innerHTML, /Family/);
+  assert.match(element('albums').innerHTML, /Holiday/);
+  assert.equal((element('albums').innerHTML.match(/type="checkbox"/g) ?? []).length, 2);
+  checked = ['album-1', 'album-2'];
+  element('birth-date').value = '2025-01-01';
+  await element('create-form').onsubmit({ preventDefault() {}, submitter: { disabled: false } });
+  assert.deepEqual(postBody.album_ids, checked);
 });
