@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Memory Studio</title>
+  <style>
+    :root{font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#493c39;background:#fffaf6}
+    *{box-sizing:border-box}body{margin:0}header{background:#f4e1d7;padding:24px max(24px,calc((100vw - 1150px)/2));display:flex;align-items:center;justify-content:space-between;gap:20px}
+    h1{font-family:Georgia,serif;font-size:32px;margin:0}h2{font-family:Georgia,serif;margin:0 0 16px;font-size:25px}h3{margin:0 0 8px;font-size:18px}p{line-height:1.5}small,.muted{color:#806f69}
+    main{max-width:1150px;margin:auto;padding:30px 24px 70px}.panel{background:#fff;border:1px solid #eadbd4;border-radius:18px;padding:24px;margin-bottom:22px;box-shadow:0 6px 22px #6d433f0b}
+    label{display:block;font-size:13px;font-weight:700;margin:12px 0 5px}input,select,textarea{width:100%;padding:10px 12px;border:1px solid #d9c8c0;border-radius:9px;background:#fff;color:inherit;font:inherit}textarea{min-height:75px;resize:vertical}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:20px}
+    button,.button{background:#a55958;color:#fff;border:0;border-radius:10px;padding:11px 16px;font:inherit;font-weight:650;cursor:pointer;text-decoration:none;display:inline-block}button:hover,.button:hover{background:#814543}.secondary{background:#f6e8e2;color:#704340}.secondary:hover{background:#ebd3c9}button:disabled{opacity:.5;cursor:wait}
+    .cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.card{border:1px solid #eadbd4;border-radius:14px;padding:16px;background:#fffdfa}.card-main{display:grid;grid-template-columns:150px 1fr;gap:16px}.card-main img{width:150px;height:150px;object-fit:cover;border-radius:11px;background:#f5eee9}
+    .alternatives{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}.option{position:relative;padding:0;background:transparent;border:3px solid transparent;border-radius:10px}.option:hover{background:transparent}.option.chosen{border-color:#a55958}.option img{width:74px;height:74px;object-fit:cover;display:block;border-radius:6px}.option span{position:absolute;bottom:0;left:0;right:0;background:#0008;color:white;font-size:10px;padding:2px}
+    .project-link{padding:12px 0;border-top:1px solid #eee;display:flex;justify-content:space-between;align-items:center;gap:10px}.status{background:#f2e6df;border-radius:99px;padding:5px 10px;font-size:12px}.error{color:#a32936;background:#fff0f1;padding:12px;border-radius:8px}.notice{background:#f9f2dc;padding:12px;border-radius:8px}.progress{height:10px;background:#eee2dc;border-radius:9px;overflow:hidden}.progress>div{height:100%;background:#a55958}#toast{position:fixed;bottom:18px;right:18px;background:#493c39;color:#fff;padding:10px 15px;border-radius:10px;display:none;max-width:400px}
+    @media(max-width:750px){.grid,.cards{grid-template-columns:1fr}.card-main{grid-template-columns:110px 1fr}.card-main img{width:110px;height:110px}header{padding:20px 24px}}
+  </style>
+</head>
+<body>
+  <header><div><h1>Memory Studio ✳</h1><small>Little moments, ready to keep.</small></div><button class="secondary" id="settings-toggle">Settings</button></header>
+  <main>
+    <section class="panel" id="settings-panel" hidden>
+      <h2>Connections</h2><p class="muted">Your Immich key and image cache stay on this Mac. OpenRouter receives selected small images only when chosen.</p>
+      <form id="settings-form"><div class="grid">
+        <div><label for="immich-url">Immich server URL</label><input id="immich-url" type="url" placeholder="https://photos.example.com" required></div>
+        <div><label for="immich-key">Immich API key</label><input id="immich-key" type="password" placeholder="Leave blank to keep saved key"></div>
+        <div><label for="provider">Image understanding</label><select id="provider"><option value="ollama">Ollama on this Mac (private)</option><option value="openrouter">OpenRouter</option><option value="none">No AI; image quality only</option></select></div>
+        <div><label for="ollama-model">Ollama model</label><input id="ollama-model" value="qwen3-vl:4b-instruct"></div>
+        <div><label for="ollama-url">Ollama URL</label><input id="ollama-url" value="http://127.0.0.1:11434"></div>
+        <div><label for="openrouter-model">OpenRouter model</label><input id="openrouter-model" value="google/gemini-3.1-flash-lite"></div>
+        <div><label for="openrouter-key">OpenRouter API key</label><input id="openrouter-key" type="password" placeholder="Leave blank to keep saved key"></div>
+      </div><div class="actions"><button>Save settings</button><button type="button" class="secondary" id="load-albums">Test Immich & load albums</button></div></form>
+    </section>
+    <section class="panel" id="create-panel">
+      <h2>Make a first-year print set</h2><p class="muted">12 monthly cards, four on each A4 page. Choose an Immich album, then review every suggestion before downloading the PDF.</p>
+      <form id="create-form"><div class="grid">
+        <div><label for="title">Project title</label><input id="title" placeholder="A year with Maya"></div>
+        <div><label for="baby-name">Name (optional)</label><input id="baby-name" placeholder="Maya"></div>
+        <div><label for="birth-date">Birth date</label><input id="birth-date" type="date" required></div>
+        <div><label for="album">Immich album</label><select id="album" required><option value="">Load albums in Settings first</option></select></div>
+        <div><label for="theme">Print theme</label><select id="theme"><option value="peach">Peach</option><option value="sage">Sage</option><option value="lavender">Lavender</option><option value="sunshine">Sunshine</option></select></div>
+        <div><label for="depth">Photo search</label><select id="depth"><option value="balanced">Balanced (8 finalists per month)</option><option value="thorough">Thorough (16 finalists per month)</option></select></div>
+      </div><label for="prompt">What moments matter most?</label><textarea id="prompt" placeholder="Genuine smiles, giggles with grandparents, cozy mornings, funny faces…"></textarea>
+      <div class="actions"><button>Create draft</button><span class="muted">Analysis may take a few minutes for a large album.</span></div></form>
+    </section>
+    <section class="panel"><h2>Projects</h2><div id="projects-list" class="muted">Loading…</div></section>
+    <section class="panel" id="draft-panel" hidden><div id="draft"></div></section>
+  </main><div id="toast" role="status"></div>
+  <script>
+    const $=id=>document.getElementById(id), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    let current=null,poll=null;
+    async function api(path,options={}){const r=await fetch(path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})}});let data;try{data=await r.json()}catch{data={detail:await r.text()}}if(!r.ok)throw Error(data.detail||'Request failed');return data}
+    function toast(message){$('toast').textContent=message;$('toast').style.display='block';setTimeout(()=>$('toast').style.display='none',5000)}
+    async function settings(){const s=await api('/api/settings');$('immich-url').value=s.immich_url;$('provider').value=s.vision_provider;$('ollama-url').value=s.ollama_url;$('ollama-model').value=s.ollama_model;$('openrouter-model').value=s.openrouter_model}
+    async function albums(){try{const list=await api('/api/albums');$('album').innerHTML='<option value="">Choose an album</option>'+list.map(a=>`<option value="${esc(a.id)}">${esc(a.albumName||a.name)} (${a.assetCount??'?'} photos)</option>`).join('');toast(`Loaded ${list.length} albums`)}catch(e){toast(e.message);$('settings-panel').hidden=false}}
+    async function projects(){const list=await api('/api/projects');$('projects-list').innerHTML=list.length?list.map(p=>`<div class="project-link"><div><strong>${esc(p.title)}</strong> <span class="status">${esc(p.status)}</span><br><small>${esc(p.birth_date)}</small></div><button class="secondary" data-open="${esc(p.id)}">Open</button></div>`).join(''):'No projects yet.'}
+    async function openProject(id){current=id;const p=await api(`/api/projects/${id}`);$('draft-panel').hidden=false;history.replaceState(null,'',`#${id}`);const progress=p.progress||{};let html=`<h2>${esc(p.title)}</h2><p class="muted">${p.asset_count??'…'} album photos · ${esc(p.status)}</p>`;
+      if(p.status==='building'||p.status==='new'){const value=progress.total?Math.round(100*progress.done/progress.total):0;html+=`<p>${esc(progress.stage||'Starting…')} · ${value}%</p><div class="progress"><div style="width:${value}%"></div></div>`;clearTimeout(poll);poll=setTimeout(()=>openProject(id),2000)}
+      if(p.error)html+=`<p class="error">${esc(p.error)}</p>`;
+      if(p.warnings?.length)html+=`<details><summary>${p.warnings.length} notes from selection</summary><ul>${p.warnings.slice(0,20).map(w=>`<li>${esc(w)}</li>`).join('')}</ul></details>`;
+      if(p.status==='ready'){
+        html+=`<div class="actions"><a class="button" href="/api/projects/${id}/export">Download A4 PDF</a><button class="secondary" data-rebuild="${id}">Refresh from Immich</button></div><p class="muted">Pick another photo for any month. Captions save when you leave the field.</p><div class="cards">`;
+        for(const c of p.cards){const image=c.asset_id?`<img src="/api/projects/${id}/images/${c.asset_id}/preview" alt="Selected month ${c.month}">`:'<div class="notice">No photo in this month</div>';
+          const chosen=c.candidates.find(a=>a.id===c.asset_id);html+=`<article class="card"><div class="card-main">${image}<div><h3>${esc(c.label)} ${chosen?.live_photo_video_id?'◉':''}</h3><small>${esc(c.date_from)} to ${esc(c.date_to)} · ${c.candidate_count} candidates ${chosen?.live_photo_video_id?'· Live Photo still':''}</small><p>${esc(c.reason)}</p><label for="caption-${c.month}">Caption</label><input id="caption-${c.month}" data-caption="${c.month}" value="${esc(c.caption)}" placeholder="A little note…"></div></div><div class="alternatives">${c.candidates.map(a=>`<button class="option ${a.id===c.asset_id?'chosen':''}" data-choose="${c.month}:${a.id}" title="${esc(a.date||'')} ${a.live_photo_video_id?'· Live Photo':''}" aria-label="Choose photo from ${esc(a.date||'unknown date')}"><img src="/api/projects/${id}/images/${a.id}/thumbnail" alt="Alternative"><span>${esc(a.date||'')}${a.live_photo_video_id?' ◉':''}</span></button>`).join('')}</div></article>`}
+        html+='</div>'
+      }
+      if(p.status==='error')html+=`<div class="actions"><button data-rebuild="${id}">Try again</button></div>`;
+      $('draft').innerHTML=html;$('draft-panel').scrollIntoView({behavior:'smooth',block:'start'});
+    }
+    $('settings-toggle').onclick=()=>$('settings-panel').hidden=!$('settings-panel').hidden;
+    $('settings-form').onsubmit=async e=>{e.preventDefault();const body={immich_url:$('immich-url').value,vision_provider:$('provider').value,ollama_url:$('ollama-url').value,ollama_model:$('ollama-model').value,openrouter_model:$('openrouter-model').value};if($('immich-key').value)body.immich_api_key=$('immich-key').value;if($('openrouter-key').value)body.openrouter_api_key=$('openrouter-key').value;try{await api('/api/settings',{method:'PUT',body:JSON.stringify(body)});$('immich-key').value='';$('openrouter-key').value='';toast('Settings saved');await albums()}catch(err){toast(err.message)}};
+    $('load-albums').onclick=albums;
+    $('create-form').onsubmit=async e=>{e.preventDefault();const button=e.submitter;button.disabled=true;try{const p=await api('/api/projects',{method:'POST',body:JSON.stringify({title:$('title').value,baby_name:$('baby-name').value,birth_date:$('birth-date').value,album_id:$('album').value,prompt:$('prompt').value,theme:$('theme').value,analysis_depth:$('depth').value})});await projects();await openProject(p.id)}catch(err){toast(err.message)}finally{button.disabled=false}};
+    document.addEventListener('click',async e=>{const open=e.target.closest('[data-open]'),choice=e.target.closest('[data-choose]'),rebuild=e.target.closest('[data-rebuild]');try{if(open)await openProject(open.dataset.open);if(choice){const [month,asset_id]=choice.dataset.choose.split(':');await api(`/api/projects/${current}/cards/${month}`,{method:'PATCH',body:JSON.stringify({asset_id})});await openProject(current)}if(rebuild){await api(`/api/projects/${rebuild.dataset.rebuild}/build`,{method:'POST'});await openProject(rebuild.dataset.rebuild)}}catch(err){toast(err.message)}});
+    document.addEventListener('change',async e=>{if(e.target.dataset.caption){try{await api(`/api/projects/${current}/cards/${e.target.dataset.caption}`,{method:'PATCH',body:JSON.stringify({caption:e.target.value})});toast('Caption saved')}catch(err){toast(err.message)}}});
+    (async()=>{try{await settings();await projects();if(location.hash)await openProject(location.hash.slice(1));if($('immich-url').value)await albums();else $('settings-panel').hidden=false}catch(err){toast(err.message)}})();
+  </script>
+</body></html>
