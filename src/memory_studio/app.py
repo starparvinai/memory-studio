@@ -220,9 +220,9 @@ def update_card(project_id: str, month: int, update: CardUpdate):
 @app.get("/api/projects/{project_id}/images/{asset_id}/{size}")
 def project_image(project_id: str, asset_id: str, size: str):
     project = _project(project_id)
-    if size not in {"thumbnail", "preview"} or asset_id not in {
-        candidate["id"] for card in project.get("cards", []) for candidate in card["candidates"]
-    }:
+    allowed = {candidate["id"] for card in project.get("cards", []) for candidate in card["candidates"]}
+    allowed.update(card["asset_id"] for card in project.get("cards", []) if card.get("asset_id"))
+    if size not in {"thumbnail", "preview"} or asset_id not in allowed:
         raise HTTPException(404, "Image not in this draft")
     try:
         immich = _immich()

@@ -7,7 +7,7 @@ A private, self-hosted draft maker for family photo print sheets. Its first form
 1. Reads photo metadata from one Immich album and assigns photos to month windows from the birth date.
 2. Downloads and caches small thumbnails. A local image quality pass screens every photo; a vision model compares a limited, date-diverse shortlist per month. Balanced mode compares up to eight per month; Thorough compares up to 16 and takes longer.
 3. Downloads previews for four finalists per month and compares those again.
-4. Shows the draft with alternate photos and editable captions.
+4. Shows the draft with alternate photos, editable captions, and crop position controls.
 5. Downloads the 12 selected originals only when you export the print PDF.
 
 The preview and thumbnail API is `GET /api/assets/{id}/thumbnail?size=...`; the print source is `GET /api/assets/{id}/original`. The app stores API keys, drafts, and cached images in `data/` by default. That directory is ignored by Git.

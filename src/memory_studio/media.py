@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from .immich import Immich
 
@@ -24,7 +24,7 @@ class MediaCache:
         if path.exists():
             return path.read_bytes()
         data = immich.image(asset_id, size)
-        temporary = folder / f".{asset_id}.{os.getpid()}.tmp"
+        temporary = folder / f".{asset_id}.{os.getpid()}.{uuid4().hex}.tmp"
         temporary.write_bytes(data)
         os.chmod(temporary, 0o600)
         temporary.replace(path)
