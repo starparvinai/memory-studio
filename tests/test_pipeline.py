@@ -7,10 +7,13 @@ from uuid import uuid4
 
 from PIL import Image
 from pypdf import PdfReader
+from fastapi.testclient import TestClient
 
+import memory_studio.app as webapp
 from memory_studio.media import MediaCache
 from memory_studio.pdf import render_project
 from memory_studio.selection import add_months, build_cards, new_project
+from memory_studio.storage import Store
 
 
 class FakeImmich:
@@ -67,3 +70,40 @@ def test_live_photo_heic_still_prints_without_motion_download(tmp_path: Path):
     assert len(PdfReader(io.BytesIO(pdf)).pages) == 3
     assert all(size == "original" for _, size in immich.calls)
     assert len(immich.calls) == 12
+
+
+def test_server_creates_reviews_and_exports_a_draft(tmp_path: Path, monkeypatch):
+    from time import monotonic, sleep
+
+    output = io.BytesIO()
+    Image.new("RGB", (1200, 1200), "#dceabb").save(output, format="JPEG")
+    immich = FakeImmich(output.getvalue())
+    birthday = date(2025, 1, 1)
+    album_id = str(uuid4())
+    assets = [{"id": str(uuid4()), "type": "IMAGE", "localDateTime": add_months(birthday, month).isoformat(),
+               "width": 1200, "height": 1200} for month in range(12)]
+    immich.search_year = lambda *args: assets
+    immich.close = lambda: None
+    monkeypatch.setattr(webapp, "store", Store(tmp_path))
+    monkeypatch.setattr(webapp, "cache", MediaCache(tmp_path))
+    monkeypatch.setattr(webapp, "_immich", lambda: immich)
+    monkeypatch.setattr(webapp, "_vision", lambda: None)
+    client = TestClient(webapp.app)
+
+    created = client.post("/api/projects", json={"birth_date": birthday.isoformat(), "album_id": album_id, "theme": "sage"})
+    assert created.status_code == 200
+    project_id = created.json()["id"]
+    deadline = monotonic() + 5
+    while monotonic() < deadline:
+        project = client.get(f"/api/projects/{project_id}").json()
+        if project["status"] in {"ready", "error"}:
+            break
+        sleep(0.05)
+    assert project["status"] == "ready", project.get("error")
+    first = project["cards"][0]
+    assert client.patch(f"/api/projects/{project_id}/cards/1", json={"caption": "First smiles", "crop_x": 0.7}).status_code == 200
+    assert client.get(f"/api/projects/{project_id}/images/{first['asset_id']}/preview").status_code == 200
+    exported = client.get(f"/api/projects/{project_id}/export")
+    assert exported.status_code == 200
+    assert len(PdfReader(io.BytesIO(exported.content)).pages) == 3
+    assert sum(size == "original" for _, size in immich.calls) == 12
