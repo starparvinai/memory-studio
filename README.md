@@ -38,6 +38,10 @@ Month 1 runs from the birth date through the day before the first monthly annive
 
 The app is a single-user personal server. Keep the repository free of real family photos and credentials. `data/` is private local state; back it up separately if needed.
 
+## Codex subscription
+
+The first version does not connect to your Codex subscription. OpenAI documents a separate [Sign in with ChatGPT and Codex app-server flow](https://developers.openai.com/siwc/token-sharing-open-source/codex-app-server) for apps that use ChatGPT plan inference. It requires an OAuth client registration, token renewal, and an app-server integration. We can add that as another model provider later. The current local Ollama provider keeps analysis on your Mac.
+
 ## Development
 
 ```sh
